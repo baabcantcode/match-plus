@@ -12,6 +12,7 @@ test("can create match", (t) => {
     id: 252288
   };
   let matcher = generate(data);
+  // not advised to use like this, mixing of array and obj arguments to match fn
   let result = matcher.match({item1: 1, id: 1}, [
     ["animal", 252, () => "found low"],
     ["animal", 252288, () => "found high"],

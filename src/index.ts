@@ -2,9 +2,21 @@ import { inspect } from "node:util";
 
 class MatchError extends Error {}
 
-type MatchObj<T> = {
-    object: T,
-    match: (this: MatchableItem | MatchObj<MatchableItem>, properties: string[] | string | MatchableItem, match_expressions: unknown[][]) => unknown,
+interface MatchInit {
+  object: MatchableItem,
+  append_match_data?: (this: MatchObj, data: MatchableItem) => MatchObj,
+  set_match_data?: (this: MatchObj, data: MatchableItem) => MatchObj,
+  set_match_arms?: (this: MatchObj, match_expressions: unknown[][]) => MatchObj,
+  match?: (this: MatchObj, properties: string[] | string | MatchableItem, match_expressions?: unknown[][]) => unknown,
+}
+
+interface MatchObj {
+    object: MatchableItem,
+    append_match_data: (this: MatchObj) => MatchObj,
+    set_match_data: (this: MatchObj, data: MatchableItem) => MatchObj,
+    set_match_arms: (this: MatchObj, match_expressions: unknown[][]) => MatchObj,
+    match: (this: MatchObj, properties: string[] | string | MatchableItem, match_expressions?: unknown[][]) => unknown,
+    match_arms?: unknown[][],
 }
 
 export const ANY = { value: "any", type: "match_override" };
@@ -22,15 +34,19 @@ export type MatchableItem = Record<string | number | symbol, MatchableValue>;
     [(match_plus.ANY, match_plus.ANY), () => "goodbye"]
 })
 */
-export function match(this: MatchableItem | MatchObj<MatchableItem>, properties: string[] | string | MatchableItem, match_expressions: unknown[][]): unknown {
+export function match(this: MatchObj, properties: string[] | string | MatchableItem, match_expressions?: unknown[][]): unknown {
   const props = typeof properties === "string" ? [properties] :
     Array.isArray(properties) ? properties :
     Object.keys(properties) as string[];
   properties;
   const value_list: MatchableValue[] = [];
-  const my_item = "object" in this && "match" in this && typeof this.match === "function" ? this.object as MatchableItem : this as MatchableItem; 
+  if (match_expressions === undefined && this.match_arms === undefined) {
+    throw new MatchError("match arms must be provided");
+  }
+  const match_arms = (match_expressions === undefined ? this.match_arms : match_expressions) as unknown[][];
+
   for (const prop of props) {
-    const value = my_item[prop];
+    const value = this.object[prop];
     if (typeof value === "undefined") {
       throw new MatchError("cannot match with non-existent property " + prop);
     }
@@ -39,13 +55,13 @@ export function match(this: MatchableItem | MatchObj<MatchableItem>, properties:
     }
     value_list.push(value as MatchableValue);
   }
-  for (const arm of match_expressions) {
+  for (const arm of match_arms) {
     if (arm.length !== props.length + 1) {
       throw new MatchError("invalid arm to prop length, with arm: " + inspect(arm));
     }
   }
   let valid_arm;
-  for (const arm of match_expressions) {
+  for (const arm of match_arms) {
     let matched = true;
     for (const [index, value] of value_list.entries()) {
       const arm_value = arm[index];
@@ -77,9 +93,28 @@ export function match(this: MatchableItem | MatchObj<MatchableItem>, properties:
   return valid_arm_fn(...value_list);
 }
 
-export function generate(obj: MatchableItem): MatchObj<MatchableItem> {
-  return { 
-    object: obj,
-    match: match.bind(obj),
+function append_match_data(this: MatchObj, data: MatchableItem): MatchObj {
+  this.object = { ...this.object, ...data };
+  return this;
+}
+
+function set_match_data(this: MatchObj, data: MatchableItem): MatchObj {
+  this.object = { ...data };
+  return this;
+}
+
+function set_match_arms(this: MatchObj, match_arms: unknown[][]): MatchObj {
+  this.match_arms = match_arms;
+  return this;
+}
+
+export function generate(obj: MatchableItem): MatchObj {
+  const match_obj: MatchInit = {
+    object: { ...obj },
   };
+  match_obj.match = match.bind(match_obj as MatchObj);
+  match_obj.append_match_data = append_match_data.bind(match_obj as MatchObj);
+  match_obj.set_match_data = set_match_data.bind(match_obj as MatchObj);
+  match_obj.set_match_arms = set_match_arms.bind(match_obj as MatchObj);
+  return match_obj as MatchObj;
 }

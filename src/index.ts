@@ -4,7 +4,7 @@ class MatchError extends Error {}
 
 type MatchObj<T> = {
     object: T,
-    match: (this: MatchableItem, properties: string[] | string, match_expressions: unknown[][]) => unknown,
+    match: (this: MatchableItem | MatchObj<MatchableItem>, properties: string[] | string | MatchableItem, match_expressions: unknown[][]) => unknown,
 }
 
 export const ANY = { value: "any", type: "match_override" };
@@ -18,15 +18,19 @@ export type MatchableValue = string | number | boolean;
 export type MatchableItem = Record<string | number | symbol, MatchableValue>;
 
 /* call it like match(["value", "length"], {
-    [23, 55, () => "hello"],
-    [match_plus.ANY, match_plus.ANY, () => "goodbye"]
+    [(23, 55), () => "hello"],
+    [(match_plus.ANY, match_plus.ANY), () => "goodbye"]
 })
 */
-export function match(this: MatchableItem, properties: string[] | string, match_expressions: unknown[][]): unknown {
-  const props = typeof properties === "string" ? [properties] : properties;
+export function match(this: MatchableItem | MatchObj<MatchableItem>, properties: string[] | string | MatchableItem, match_expressions: unknown[][]): unknown {
+  const props = typeof properties === "string" ? [properties] :
+    Array.isArray(properties) ? properties :
+    Object.keys(properties) as string[];
+  properties;
   const value_list: MatchableValue[] = [];
+  const my_item = "object" in this && "match" in this && typeof this.match === "function" ? this.object as MatchableItem : this as MatchableItem; 
   for (const prop of props) {
-    const value = this[prop];
+    const value = my_item[prop];
     if (typeof value === "undefined") {
       throw new MatchError("cannot match with non-existent property " + prop);
     }
@@ -68,9 +72,9 @@ export function match(this: MatchableItem, properties: string[] | string, match_
     throw new MatchError("matched arm does not have a callable function");
   }
   // eslint-disable-next-line @typescript-eslint/ban-types
-  valid_arm = valid_arm as Function[];
+  const valid_arm_fn = valid_arm[props.length] as Function;
   
-  return valid_arm[props.length](...value_list);
+  return valid_arm_fn(...value_list);
 }
 
 export function generate(obj: MatchableItem): MatchObj<MatchableItem> {

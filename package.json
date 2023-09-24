@@ -4,7 +4,8 @@
   "description": "",
   "main": "dist/index.js",
   "scripts": {
-    "lint:fix": "eslint src/**.ts --fix",
+    "lint": "eslint test/**/*.ts src/**/*.ts",
+    "lint:fix": "npm run lint -- --fix",
     "lint:watch": "npm-watch \"lint:fix\"",
     "build": "node build.cjs",
     "test": "c8 ava"

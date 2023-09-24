@@ -77,15 +77,104 @@ test("setters work", (t) => {
   matcher.set_match_arms([
     ...(matcher.match_arms as MatchArm[]),
     {
+      conditions: ["1532", false],
+      fn: (id: number) => "found new one with updated string coerced id " + id,
+    },
+    {
       conditions: [1532, false],
       fn: (id: number) => "found new one with updated id " + id,
     },
   ]);
   console.log(matcher.data, matcher.match_arms);
+  matcher.set_options({
+    match_mode: "TYPE_COERCED",
+    prioritization_mode: "EXACT_MATCH"
+  });
+  result = matcher.match();
+  t.is(
+    result,
+    "found new one with updated string coerced id 1532",
+    "will NOT match none found first (despite it being earlier in the match arms) since that is a less exact match"
+  );
+  matcher.set_options({
+    match_mode: "TYPE_COERCED",
+    prioritization_mode: "ORDER"
+  });
+  result = matcher.match();
+  t.is(
+    result,
+    "none found",
+    "will match none found first since its earlier in the match arms"
+  );
+  matcher.set_options({
+    match_mode: "TYPE_CHECK",
+    prioritization_mode: "EXACT_MATCH"
+  });
   result = matcher.match();
   t.is(
     result,
     "found new one with updated id 1532",
-    "will NOT match none found first (despite it being earlier in the match arms) since that is a less exact match"
+    "does type checking so now goes down to the one with a number"
   );
+  matcher.set_options({
+    match_mode: "TRUTHY",
+    prioritization_mode: "EXACT_MATCH"
+  });
+  result = matcher.match();
+  t.is(
+    result,
+    "found low",
+    "anything that evaluates to correct boolean would match now"
+  );
+});
+
+test("is data update / reuse friendly", function (t) {
+  const data: MatchableItem = {
+    item1: "animal",
+    object: {
+      help: "get help here",
+    },
+    is_complete: false,
+    id: 252288,
+  };
+  const g = generate(data, { call_fn_args: "FULL_DATA"});
+  g.set_match_on({ is_complete: true, id: true });
+  g.set_match_arms([
+    [false, 2522, ({ item1 }: {item1: string}) => `my ${item1} needs to go to work`],
+    [true, 252288, ({ item1 }: {item1: string}) => `my ${item1} needs to go stay at home`],
+    [false, 252288, ({ item1 }: {item1: string}) => `my ${item1} should just chill out today`],
+    [ANY, ANY, ({ object }: {object: { help: string }}) => `i think i need to ${object.help}`]
+  ]);
+  t.is(g.match(), "my animal should just chill out today", "returns full object so we can access item1 data instead of the matching criteria data");
+  g.set_data({
+    ...data,
+    id: 2250
+  });
+  t.is(g.match(), "i think i need to get help here");
+  data.id = 2522;
+  t.is(g.match(), "i think i need to get help here", "the matcher uses a shallow copy so this should still match the any clause");
+});
+
+test("usable over arrays and with non-object data", function (t) {
+  const data_array = [510, 2520, 3259, 52, 250, 99];
+  const g = generate(data_array[0], { call_fn_args: "FULL_DATA", /*criteria_type: "FULL_DATA"*/ }); // will auto set criteria type due to datatype
+  g.set_match_on(["this", "just", "wont", "be", "set"]); // this will be ignored since data type is not object
+  g.set_match_arms([
+    [250, ({ item1 }: {item1: string}) => `my ${item1} needs to go to work`], // this one works despite it being a number, linting wont do anything
+    [99, (d: number) => `my ${d} needs to go stay at home`],
+    [510, (d: string) => `my ${typeof d} should just chill out today`], // this wont be a string and will print `my number should just chill out today`
+    [ANY, ({ object }: {object: any }) => `i think i need to ${object?.hi}`] // would need to use optionals in general
+  ]);
+  const match_array = [
+    "my number should just chill out today",
+    "i think i need to undefined",
+    "i think i need to undefined",
+    "i think i need to undefined",
+    "my undefined needs to go to work",
+    "my 99 needs to go stay at home"
+  ];
+  for (const [index, data] of data_array.entries()) {
+    g.set_data(data);
+    t.is(g.match(), match_array[index]);
+  }
 });

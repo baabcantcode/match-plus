@@ -23,11 +23,11 @@ const sharedConfig = {
 build({
   ...sharedConfig,
   target: "node12",
-  outfile: "dist/index.js",
+  outfile: "dist/index.cjs",
 });
 
 build({
   ...sharedConfig,
-  outfile: "dist/index.esm.js",
+  outfile: "dist/index.mjs",
   format: "esm",
 });
